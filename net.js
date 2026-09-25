@@ -1,12 +1,20 @@
 // Two-player networking: a direct peer-to-peer link (PeerJS / WebRTC) when the
 // networks allow it, otherwise a relay through a public MQTT broker over WebSocket.
 //
-//   GameNet.host({ prefix, topic, code, onLink, onError }) -> { stop() }
+//   GameNet.host({ prefix, topic, code, onLink, onError, onStatus }) -> { stop() }
 //   GameNet.join({ prefix, topic, code, forceRelay, onStatus }) -> Promise<link>
+//     rejects with { type: "no-response", relays: <brokers reached>, direct: <why direct failed> }
 //
 // A link is { kind: "direct" | "relay", open, send(obj), close(), onData, onClose }.
 (function () {
-  const BROKERS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt"];
+  const VERSION = 3;
+  const BROKERS = [
+    { url: "wss://broker.emqx.io:8084/mqtt" },
+    { url: "wss://broker.hivemq.com:8884/mqtt" },
+    { url: "wss://public.cloud.shiftr.io", username: "public", password: "public" }   // port 443, rarely blocked
+  ];
+  const connectBroker = (b, clientId, timeout) =>
+    mqtt.connect(b.url, { clean: true, connectTimeout: timeout, reconnectPeriod: 3000, clientId, username: b.username, password: b.password });
   const DIRECT_WAIT = 6000, RELAY_WAIT = 10000, PING = 2000, DEAD = 9000;
   const rid = () => Math.random().toString(36).slice(2, 10);
   const parse = buf => { try { return JSON.parse(buf.toString()); } catch { return null; } };
@@ -46,23 +54,25 @@
     return link;
   }
 
-  function host({ prefix, topic, code, onLink, onError }) {
-    let peer = null, stopped = false, directOk = false, relayOk = false;
-    const clients = [], links = new Map();
+  function host({ prefix, topic, code, onLink, onError, onStatus }) {
+    let peer = null, stopped = false, directOk = false;
+    const clients = [], links = new Map(), relayUp = new Set();
+    const status = () => { if (!stopped && onStatus) onStatus({ direct: directOk, relays: relayUp.size, of: BROKERS.length }); };
 
     if (window.Peer) {
       peer = new Peer(prefix + code);
-      peer.on("open", () => { directOk = true; });
+      peer.on("open", () => { directOk = true; status(); });
       peer.on("error", e => { if (e.type === "unavailable-id" && !stopped) { stop(); onError({ type: "unavailable-id" }); } });
       peer.on("disconnected", () => { if (!stopped) try { peer.reconnect(); } catch {} });
       peer.on("connection", c => c.on("open", () => { if (!stopped) onLink(wrapPeer(c)); }));
     }
 
-    if (window.mqtt) for (const url of BROKERS) {
-      const client = mqtt.connect(url, { clean: true, connectTimeout: 8000, reconnectPeriod: 3000, clientId: "h_" + rid() });
+    if (window.mqtt) for (const b of BROKERS) {
+      const client = connectBroker(b, "h_" + rid(), 8000);
       clients.push(client);
       const inTopic = `${topic}/${code}/h`;
-      client.on("connect", () => { relayOk = true; client.subscribe(inTopic); });
+      client.on("connect", () => { relayUp.add(b.url); status(); client.subscribe(inTopic); });
+      client.on("close", () => { if (relayUp.delete(b.url)) status(); });
       client.on("error", () => {});
       client.on("message", (t, buf) => {
         const env = parse(buf);
@@ -83,7 +93,7 @@
       });
     }
 
-    setTimeout(() => { if (!stopped && !directOk && !relayOk) onError({ type: "network" }); }, 12000);
+    setTimeout(() => { if (!stopped && !directOk && !relayUp.size) onError({ type: "network" }); }, 12000);
 
     function stop() {
       if (stopped) return;
@@ -97,10 +107,11 @@
 
   function join({ prefix, topic, code, forceRelay, onStatus }) {
     return new Promise((resolve, reject) => {
-      let done = false;
+      let done = false, directWhy = forceRelay ? "skipped" : "timeout";
 
       function relay() {
-        if (!window.mqtt) { done = true; return reject({ type: "network" }); }
+        if (!window.mqtt) { done = true; return reject({ type: "no-response", relays: 0, direct: directWhy }); }
+        const reached = new Set();
         const id = rid(), inTopic = `${topic}/${code}/g/${id}`, outTopic = `${topic}/${code}/h`;
         const wrap = m => ({ g: id, m });
         const clients = [], knocks = [];
@@ -108,13 +119,14 @@
           knocks.forEach(clearInterval);
           clients.forEach(c => { if (c !== keep) try { c.end(true); } catch {} });
         };
-        const timeout = setTimeout(() => { if (done) return; done = true; cleanup(); reject({ type: "no-response" }); }, RELAY_WAIT);
-        BROKERS.forEach((url, i) => {
-          const client = mqtt.connect(url, { clean: true, connectTimeout: 7000, reconnectPeriod: 3000, clientId: "g_" + id + "_" + i });
+        const timeout = setTimeout(() => { if (done) return; done = true; cleanup(); reject({ type: "no-response", relays: reached.size, direct: directWhy }); }, RELAY_WAIT);
+        BROKERS.forEach((b, i) => {
+          const client = connectBroker(b, "g_" + id + "_" + i, 7000);
           clients.push(client);
           let L = null, knocking = false;
           client.on("error", () => {});
           client.on("connect", () => {
+            reached.add(b.url);
             client.subscribe(inTopic, () => {
               if (knocking || done) return;
               knocking = true;
@@ -145,7 +157,10 @@
         relay();
       };
       const timer = setTimeout(fallback, DIRECT_WAIT);
-      peer.on("error", fallback);
+      peer.on("error", e => {
+        directWhy = e && e.type === "peer-unavailable" ? "no-host" : "blocked:" + (e && e.type);
+        fallback();
+      });
       peer.on("open", () => {
         const c = peer.connect(prefix + code, { reliable: true });
         c.on("open", () => {
@@ -157,5 +172,5 @@
     });
   }
 
-  window.GameNet = { host, join };
+  window.GameNet = { host, join, VERSION };
 })();

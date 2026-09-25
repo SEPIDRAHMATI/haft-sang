@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Vazirmatn:wght@600;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
-<script src="net.js"></script>
+<script src="net.js?v=3"></script>
 <style>
   :root {
     --bg: #f3efe6; --panel: #ffffff; --ink: #20242e; --muted: #6b6f7c; --line: #e0dacd;
@@ -121,6 +121,7 @@
       <button id="shareBtn" class="ghost">Share…</button>
     </div>
     <p class="muted" style="margin:16px 0 0"><span class="spinner"></span>Waiting for someone to join…</p>
+    <p class="muted" id="netStatus" style="margin:8px 0 0;font-size:13px">Opening connections…</p>
     <button class="ghost" id="cancelBtn" style="margin-top:14px">Cancel</button>
   </section>
 
@@ -179,7 +180,7 @@
     <p style="margin:0 0 8px">With less space and fewer neighborhood gatherings in city life, Haft Sang is played far less than it used to be. Bringing it online is a small way to keep it alive — and to share it with people who've never heard of it.</p>
     <p class="muted" style="margin:0">Source: <a href="https://shop.espadaan.com/mag/post/525" target="_blank" rel="noopener" style="color:var(--accent)">“The history of Haft Sang” (in Persian), Espadaan Magazine</a>. This online version is simplified to two players, one on each side.</p>
   </details>
-  <footer>Moves travel directly between the two browsers when the networks allow it, and through a relay server otherwise. No account needed.</footer>
+  <footer>Moves travel directly between the two browsers when the networks allow it, and through a relay server otherwise. No account needed. · <span id="ver">v3</span></footer>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -460,6 +461,12 @@
     $("codeShow").textContent = code; show("waiting");
     net = GameNet.host({
       prefix: PREFIX, topic: TOPIC, code,
+      onStatus: st => {
+        const ok = st.direct || st.relays > 0;
+        $("netStatus").textContent = ok
+          ? "Ready · direct " + (st.direct ? "✓" : "✗") + " · relay " + st.relays + "/" + st.of
+          : "Opening connections…";
+      },
       onError: err => {
         if (err.type === "unavailable-id" && attempt < 3) return hostGame(attempt + 1);
         if (role === "host" && !sim) { show("lobby"); $("lobbyErr").textContent = "Couldn't start a game — check your internet connection and try again."; }
@@ -536,7 +543,9 @@
         };
         link.send({ t: "hello", name: myName() });
       })
-      .catch(() => fail("Couldn't reach game " + c + ". Check the code and make sure the other player still has the game open — on a phone, keep the game on screen (switching apps can pause it)."));
+      .catch(e => fail(e && e.relays === 0
+        ? "Your network seems to be blocking the game servers. Try switching between Wi-Fi and mobile data, or turn off any VPN or content blocker."
+        : "Game " + c + " isn't answering. On the other device: refresh the page (both should say v3 at the bottom), create a new game, and keep it open on screen."));
   }
   let guestTimer = null;
   function startGuestInput() {
