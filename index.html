@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haft Sang Online</title>
+<meta name="description" content="Haft Sang (هفت سنگ), the classic Persian street game, online for two players on separate devices.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23577a3a'/><ellipse cx='50' cy='80' rx='30' ry='9' fill='%23888'/><ellipse cx='50' cy='66' rx='25' ry='8' fill='%23a3a3a3'/><ellipse cx='50' cy='53' rx='20' ry='7' fill='%23b5b5b5'/><ellipse cx='50' cy='41' rx='15' ry='6' fill='%23c9c9c9'/><circle cx='78' cy='22' r='10' fill='%23f97316'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Vazirmatn:wght@600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root {
+    --bg: #f3efe6; --panel: #ffffff; --ink: #20242e; --muted: #6b6f7c; --line: #e0dacd;
+    --accent: #c2410c; --p1: #2563eb; --p2: #dc2626; --ok: #15803d; --warn: #b45309;
+    --shadow: 0 10px 30px rgba(32, 36, 46, .10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #13151b; --panel: #1c1f28; --ink: #eceef4; --muted: #9aa0b2; --line: #2c303c;
+      --accent: #fb923c; --p1: #60a5fa; --p2: #f87171; --ok: #4ade80; --warn: #fbbf24; --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #13151b; --panel: #1c1f28; --ink: #eceef4; --muted: #9aa0b2; --line: #2c303c;
+    --accent: #fb923c; --p1: #60a5fa; --p2: #f87171; --ok: #4ade80; --warn: #fbbf24; --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: "Fredoka", system-ui, sans-serif;
+    font-size: 17px; line-height: 1.45; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 16px 16px 40px;
+  }
+  h1 { font-size: clamp(28px, 7vw, 42px); margin: 4px 0 0; font-weight: 700; letter-spacing: -.5px; text-align: center; }
+  h1 .fa { font-family: "Vazirmatn", sans-serif; color: var(--accent); font-weight: 800; margin-left: 8px; }
+  .tag { color: var(--muted); margin: 2px 0 16px; text-align: center; }
+  .wrap { width: 100%; max-width: 520px; }
+  .wide { width: 100%; max-width: 980px; }
+  #game { max-width: min(980px, max(520px, calc((100vh - 250px) * 1.6))); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .hidden { display: none !important; }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+  input { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 14px; outline: none; }
+  input:focus { border-color: var(--accent); }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer; background: var(--accent); color: #fff; transition: transform .08s, filter .15s; }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .or { text-align: center; color: var(--muted); font-size: 14px; margin: 16px 0; position: relative; }
+  .or::before, .or::after { content: ""; position: absolute; top: 50%; width: 38%; height: 1px; background: var(--line); }
+  .or::before { left: 0; } .or::after { right: 0; }
+  .code { font-size: 34px; font-weight: 700; letter-spacing: 6px; text-align: center; background: var(--bg); border-radius: 12px; padding: 10px; margin: 8px 0 12px; user-select: all; }
+  .center { text-align: center; }
+  .muted { color: var(--muted); font-size: 15px; }
+  .err { color: var(--p2); font-size: 15px; min-height: 1.2em; margin-top: 8px; }
+  .spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); display: inline-block; vertical-align: -3px; margin-right: 8px; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hud { display: flex; gap: 10px; margin-bottom: 10px; align-items: stretch; }
+  .player { flex: 1; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; min-width: 0; }
+  .player .dot { width: 22px; height: 22px; border-radius: 50%; flex: none; border: 3px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+  .player .info { flex: 1; min-width: 0; }
+  .player .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player .role { font-size: 13px; color: var(--muted); }
+  .player .score { font-size: 26px; font-weight: 700; }
+  .player.p2 { flex-direction: row-reverse; text-align: right; }
+  .stack { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+  .stack .pips { display: flex; gap: 3px; align-items: flex-end; }
+  .stack .pip { border-radius: 50%; background: var(--line); }
+  .stack .pip.on { background: #8b8f99; }
+
+  .field-wrap { position: relative; width: 100%; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; }
+  .hint { text-align: center; font-weight: 600; font-size: 18px; min-height: 28px; margin: 10px 0 2px; }
+  .subhint { text-align: center; color: var(--muted); font-size: 14px; min-height: 20px; }
+  .actions { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .banner { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; font-size: 15px; }
+  .rotate { display: none; text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+  @media (orientation: portrait) and (max-width: 700px) { .rotate { display: block; } }
+
+  details.rules { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 14px 20px; box-shadow: var(--shadow); }
+  details.rules summary { cursor: pointer; font-weight: 600; }
+  details.rules h3 { font-size: 16px; margin: 14px 0 4px; }
+  details.rules ol, details.rules ul { margin: 4px 0; padding-left: 20px; }
+  details.rules li { margin-bottom: 5px; }
+  .theme-btn { position: fixed; top: 12px; right: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: 8px 11px; border-radius: 10px; font-size: 16px; z-index: 5; }
+  footer { margin-top: 18px; font-size: 13px; color: var(--muted); text-align: center; }
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 15px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<button class="theme-btn" id="themeBtn" aria-label="Toggle light or dark theme">◐</button>
+<h1>Haft Sang<span class="fa">هفت سنگ</span></h1>
+<p class="tag">The Persian street game of seven stones — knock the tower down, then rebuild it before you get hit.</p>
+
+<div class="wrap" id="lobbyWrap">
+  <section id="lobby" class="card">
+    <label for="nameInput">Your name</label>
+    <input id="nameInput" maxlength="14" placeholder="e.g. Sepi" autocomplete="nickname">
+    <div style="height:14px"></div>
+    <button id="createBtn" style="width:100%">Create a new game</button>
+    <div class="or">or join a friend</div>
+    <div class="row">
+      <input id="codeInput" maxlength="5" placeholder="GAME CODE" style="text-transform:uppercase;letter-spacing:3px;text-align:center" autocomplete="off">
+      <button id="joinBtn" style="flex:0 0 auto">Join</button>
+    </div>
+    <div class="err" id="lobbyErr"></div>
+  </section>
+
+  <section id="waiting" class="card center hidden">
+    <div class="muted">Share this code with your opponent</div>
+    <div class="code" id="codeShow">-----</div>
+    <div class="row">
+      <button id="copyLinkBtn">Copy invite link</button>
+      <button id="shareBtn" class="ghost">Share…</button>
+    </div>
+    <p class="muted" style="margin:16px 0 0"><span class="spinner"></span>Waiting for someone to join…</p>
+    <button class="ghost" id="cancelBtn" style="margin-top:14px">Cancel</button>
+  </section>
+
+  <section id="connecting" class="card center hidden">
+    <p style="margin:6px 0"><span class="spinner"></span><span id="connectingText">Connecting…</span></p>
+    <div class="err" id="connectErr"></div>
+    <button class="ghost hidden" id="backBtn" style="margin-top:10px">Back</button>
+  </section>
+</div>
+
+<section id="game" class="wide hidden">
+  <div class="banner hidden" id="banner"></div>
+  <div class="rotate">↻ Turn your phone sideways for a bigger field.</div>
+  <div class="hud">
+    <div class="player p1" id="pl1"><div class="dot" style="background:var(--p1)"></div><div class="info"><div class="name" id="n1">Blue</div><div class="role" id="r1"></div></div><div class="score" id="sc1">0</div></div>
+    <div class="stack"><div class="pips" id="pips"></div><div id="firstTo">first to 3</div></div>
+    <div class="player p2" id="pl2"><div class="dot" style="background:var(--p2)"></div><div class="info"><div class="name" id="n2">Red</div><div class="role" id="r2"></div></div><div class="score" id="sc2">0</div></div>
+  </div>
+  <div class="field-wrap" id="fieldWrap"><canvas id="cv"></canvas></div>
+  <div class="hint" id="hint" aria-live="polite"></div>
+  <div class="subhint" id="subhint"></div>
+  <div class="actions">
+    <button id="rematchBtn" class="hidden">Play again</button>
+    <button id="leaveBtn" class="ghost">Leave game</button>
+  </div>
+</section>
+
+<div class="wide" style="max-width:720px;margin-top:16px">
+  <details class="rules" id="rules" open>
+    <summary>How to play</summary>
+    <p style="margin:10px 0 0">One player is the <b>Thrower</b> 🧱, the other is the <b>Hunter</b> 🎯. The tower in the middle is a stack of seven stones.</p>
+    <h3>1 · Knock it down</h3>
+    <ul>
+      <li>The Thrower stands behind the white line. <b>Drag backwards and release</b> (like a slingshot) to roll the ball at the tower.</li>
+      <li>You get <b>3 throws</b>. Miss all three and the roles swap.</li>
+    </ul>
+    <h3>2 · Rebuild vs. hunt</h3>
+    <ul>
+      <li>When the tower falls, the stones scatter and <b>both players can run</b>.</li>
+      <li><b>Thrower:</b> pick up the stones <b>biggest first</b> (the glowing one is next) and carry each back to the tower spot. Stack all seven and you score a point — <i>“Haft Sang!”</i>. You can also run into the ball to kick it away from the Hunter.</li>
+      <li><b>Hunter:</b> run to the ball to pick it up, then <b>tap/click where you want to throw</b>. Hit the Thrower and the roles swap. While holding the ball you can't move, and you must throw within <b>5 seconds</b> — hold it longer and the Thrower gets a stone placed for free. You're not allowed inside the red <i>defense arc</i> around the tower.</li>
+    </ul>
+    <h3>Controls</h3>
+    <ul>
+      <li><b>Computer:</b> move with <b>WASD</b> or the <b>arrow keys</b>; use the mouse to aim and throw.</li>
+      <li><b>Phone:</b> drag in the <b>bottom-left corner</b> of the field as a joystick; tap or drag anywhere else to aim and throw.</li>
+    </ul>
+    <p style="margin:10px 0 4px">First player to <b>3 points</b> wins the match.</p>
+  </details>
+  <details class="rules" id="about" style="margin-top:16px">
+    <summary>About the game · <span style="font-family:Vazirmatn,sans-serif">دربارهٔ هفت سنگ</span></summary>
+    <p style="margin:10px 0 8px"><b>Haft Sang</b> (“seven stones”) is a traditional Iranian team game played in villages and city streets across the country, by kids and adults alike. Old books and sources suggest it has been a favorite pastime in Iran for <b>centuries</b>, though no one can pin down exactly when it began. It needs almost no equipment — seven flat stones and a ball — which is a big part of why it spread so widely.</p>
+    <p style="margin:0 0 8px"><b>Why seven?</b> The number seven carries special meaning in Persian culture and far beyond it — from the <i>Seven Labours of Rostam</i> in the Shahnameh to the seven items of the Nowruz <i>haft-sin</i> table.</p>
+    <p style="margin:0 0 8px"><b>How it's traditionally played:</b> two teams face off. The attacking team throws the ball from behind a line (often about seven steps away) to knock down the stack. Then they scatter and try to rebuild it, while the defending team throws the ball at them — anyone who gets hit is out. Stack all seven before everyone is out, and your team scores.</p>
+    <p style="margin:0 0 8px"><b>Official rules:</b> for most of its history the game had no single rulebook. Iran's Federation of Traditional and Indigenous Sports later wrote standard rules, including a <i>defense arc</i> that defenders may not cross and a <i>5-second rule</i> for holding the ball. This online version borrows both.</p>
+    <p style="margin:0 0 8px">With less space and fewer neighborhood gatherings in city life, Haft Sang is played far less than it used to be. Bringing it online is a small way to keep it alive — and to share it with people who've never heard of it.</p>
+    <p class="muted" style="margin:0">Source: <a href="https://shop.espadaan.com/mag/post/525" target="_blank" rel="noopener" style="color:var(--accent)">“The history of Haft Sang” (in Persian), Espadaan Magazine</a>. This online version is simplified to two players, one on each side.</p>
+  </details>
+  <footer>Moves travel directly between the two browsers (peer-to-peer). No account needed.</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ================= constants =================
+  const W = 960, H = 600;
+  const T = { x: 610, y: 300 };           // tower spot
+  const LINE_X = 210;                      // throw line
+  const HUNTER_MIN_X = 700;                // hunter area during the throw phase
+  const NO_GO = 95;                        // hunter can't enter this radius around the tower
+  const PLACE_R = 42;                      // drop a stone within this radius of the tower
+  const PR = 17, BR = 9;                   // player radius, ball radius
+  const STONE_R = [23, 21, 19, 17, 15, 13, 11];
+  const SPEED = 3.3, CARRY_SPEED = 2.9;
+  const HUNTER_THROW = 13.5, LIVE_MIN = 5;
+  const HOLD_LIMIT = 300;                  // 5 s at 60 Hz (official 5-second rule)
+  const WIN_SCORE = 3, TRIES = 3;
+  const PREFIX = "haftsang-sr26-";
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const $ = id => document.getElementById(id);
+
+  // ================= theme / name =================
+  const root = document.documentElement;
+  try { const t = localStorage.getItem("hs-theme"); if (t) root.dataset.theme = t; } catch {}
+  $("themeBtn").onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("hs-theme", root.dataset.theme); } catch {}
+  };
+  try { $("nameInput").value = localStorage.getItem("hs-name") || ""; } catch {}
+  const myName = () => { const n = $("nameInput").value.trim().slice(0, 14); try { localStorage.setItem("hs-name", n); } catch {} return n; };
+
+  // ================= ui helpers =================
+  function show(id) {
+    ["lobby", "waiting", "connecting"].forEach(s => $(s).classList.toggle("hidden", s !== id));
+    $("lobbyWrap").classList.toggle("hidden", id === "game");
+    $("game").classList.toggle("hidden", id !== "game");
+    if (id === "game") { $("rules").open = false; resize(); }
+  }
+  let toastTimer;
+  function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
+  function banner(m) { $("banner").textContent = m || ""; $("banner").classList.toggle("hidden", !m); }
+
+  // ================= simulation (host only) =================
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  let sim = null;
+  const inputs = { 1: { x: 0, y: 0 }, 2: { x: 0, y: 0 } };
+
+  function newMatch(names, starter) {
+    sim = { names, sc: { 1: 0, 2: 0 }, att: starter || 1, first: starter || 1, win: 0, round: 0, msg: "", mt: 0 };
+    newRound();
+  }
+  function newRound() {
+    const s = sim;
+    s.round++; s.ph = "aim"; s.tries = 0; s.k = 7; s.hold = 0; s.cool = 0; s.endT = 0;
+    const hun = 3 - s.att;
+    s.P = { [s.att]: { x: 110, y: 300, carry: -1 }, [hun]: { x: 870, y: 300, carry: -1 } };
+    s.B = { x: 0, y: 0, vx: 0, vy: 0, holder: s.att, live: false };
+    s.S = STONE_R.map(r => ({ x: T.x, y: T.y, vx: 0, vy: 0, r, placed: true }));
+  }
+  function say(m, frames = 110) { sim.msg = m; sim.mt = frames; }
+
+  function movePlayer(p, inp, sp) {
+    let { x, y } = inp; const l = Math.hypot(x, y);
+    if (l > 1) { x /= l; y /= l; }
+    p.x = clamp(p.x + x * sp, PR, W - PR); p.y = clamp(p.y + y * sp, PR, H - PR);
+  }
+  function bodies() {
+    const list = sim.S.filter(st => !st.placed && st !== carried());
+    if (!sim.B.holder) list.push(sim.B);
+    return list;
+  }
+  function carried() { const a = sim.P[sim.att]; return a.carry >= 0 ? sim.S[a.carry] : null; }
+  const radius = b => b === sim.B ? BR : b.r;
+  const mass = b => b === sim.B ? 260 : b.r * b.r;
+
+  function physics(list) {
+    for (const b of list) {
+      b.x += b.vx; b.y += b.vy;
+      const f = b === sim.B ? 0.986 : 0.93;
+      b.vx *= f; b.vy *= f;
+      if (Math.hypot(b.vx, b.vy) < 0.08) { b.vx = b.vy = 0; }
+      const r = radius(b);
+      if (b.x < r) { b.x = r; b.vx = Math.abs(b.vx) * 0.7; b.wall = true; }
+      if (b.x > W - r) { b.x = W - r; b.vx = -Math.abs(b.vx) * 0.7; b.wall = true; }
+      if (b.y < r) { b.y = r; b.vy = Math.abs(b.vy) * 0.7; b.wall = true; }
+      if (b.y > H - r) { b.y = H - r; b.vy = -Math.abs(b.vy) * 0.7; b.wall = true; }
+    }
+    // body-body collisions
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) collide(list[i], list[j]);
+    // partial tower is a static obstacle while rebuilding
+    if (sim.ph === "scramble" && sim.k > 0) {
+      const tr = STONE_R[0];
+      for (const b of list) {
+        const d = dist(b, T), min = tr + radius(b);
+        if (d < min && d > 0) {
+          const nx = (b.x - T.x) / d, ny = (b.y - T.y) / d;
+          b.x = T.x + nx * min; b.y = T.y + ny * min;
+          const vn = b.vx * nx + b.vy * ny;
+          if (vn < 0) { b.vx -= 1.6 * vn * nx; b.vy -= 1.6 * vn * ny; }
+        }
+      }
+    }
+  }
+  function collide(a, b) {
+    const ra = radius(a), rb = radius(b);
+    let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+    if (d >= ra + rb) return;
+    if (d === 0) { dx = 1; dy = 0; d = 1; }
+    const nx = dx / d, ny = dy / d, ma = mass(a), mb = mass(b), over = ra + rb - d;
+    a.x -= nx * over * mb / (ma + mb); a.y -= ny * over * mb / (ma + mb);
+    b.x += nx * over * ma / (ma + mb); b.y += ny * over * ma / (ma + mb);
+    const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+    if (rel > 0) return;
+    const j = -(1 + 0.6) * rel / (1 / ma + 1 / mb);
+    a.vx -= j * nx / ma; a.vy -= j * ny / ma;
+    b.vx += j * nx / mb; b.vy += j * ny / mb;
+  }
+  function breakTower() {
+    const B = sim.B, sp = Math.hypot(B.vx, B.vy) || 1;
+    const dir = Math.atan2(B.vy, B.vx);
+    sim.S.forEach((st, i) => {
+      const a = dir + (Math.random() - 0.5) * 2.4;
+      const v = 3 + Math.random() * 5 + sp * 0.25;
+      st.placed = false;
+      st.x = T.x + Math.cos(a) * (6 + i * 2); st.y = T.y + Math.sin(a) * (6 + i * 2);
+      st.vx = Math.cos(a) * v; st.vy = Math.sin(a) * v;
+    });
+    sim.k = 0;
+    B.vx = -B.vx * 0.35 + (Math.random() - 0.5) * 3; B.vy = -B.vy * 0.35 + (Math.random() - 0.5) * 3;
+    sim.ph = "scramble";
+    say("Tower down! Rebuild vs. hunt!", 100);
+  }
+  function endRound(msg, scorer) {
+    if (scorer) sim.sc[scorer]++;
+    say(msg, 130);
+    if (scorer && sim.sc[scorer] >= WIN_SCORE) { sim.win = scorer; sim.ph = "over"; return; }
+    sim.ph = "end"; sim.endT = 130;
+  }
+
+  function step() {
+    const s = sim;
+    if (s.mt > 0) s.mt--;
+    const att = s.att, hun = 3 - att, A = s.P[att], Hh = s.P[hun], B = s.B;
+
+    if (s.ph === "aim" || s.ph === "thrown") {
+      // thrower stays behind the line, hunter stays behind the tower
+      movePlayer(A, inputs[att], SPEED); A.x = Math.min(A.x, LINE_X - PR);
+      movePlayer(Hh, inputs[hun], SPEED); Hh.x = Math.max(Hh.x, HUNTER_MIN_X);
+      if (s.ph === "aim") { B.x = A.x + PR + BR + 2; B.y = A.y; B.vx = B.vy = 0; }
+      else {
+        physics([B]);
+        if (dist(B, T) < STONE_R[0] + BR) { breakTower(); return; }
+        // a miss: the ball stopped, rolled past the tower, or hit a wall
+        if (Math.hypot(B.vx, B.vy) < 0.6 || B.wall || B.x > T.x + 90) {
+          s.tries++;
+          if (s.tries >= TRIES) { s.att = hun; endRound("Three misses — roles swap!"); }
+          else { s.ph = "aim"; B.holder = att; say("Missed! " + (TRIES - s.tries) + " throw" + (TRIES - s.tries > 1 ? "s" : "") + " left", 80); }
+        }
+      }
+      return;
+    }
+
+    if (s.ph === "scramble") {
+      // thrower
+      movePlayer(A, inputs[att], A.carry >= 0 ? CARRY_SPEED : SPEED);
+      // hunter: frozen while holding the ball, kept out of the tower circle
+      if (B.holder === hun) {
+        s.hold++;
+        if (s.hold > HOLD_LIMIT) {
+          // 5-second foul: the ball drops and the thrower gets the next stone placed for free
+          B.holder = 0; B.x = Hh.x; B.y = Hh.y + PR + BR; B.vx = B.vy = 0; s.cool = 45; s.hold = 0;
+          if (A.carry === s.k) A.carry = -1;
+          const st = s.S[s.k]; st.placed = true; st.x = T.x; st.y = T.y; st.vx = st.vy = 0; s.k++;
+          if (s.k === 7) { endRound("HAFT SANG! +1 for " + (s.names[att] || "Thrower"), att); return; }
+          say("5-second foul — free stone!", 90);
+        }
+      } else movePlayer(Hh, inputs[hun], SPEED);
+      const dh = dist(Hh, T);
+      if (dh < NO_GO + PR) { const k = (NO_GO + PR) / (dh || 1); Hh.x = T.x + (Hh.x - T.x) * k; Hh.y = T.y + (Hh.y - T.y) * k; }
+      if (s.cool > 0) s.cool--;
+
+      physics(bodies());
+      if (B.live && Math.hypot(B.vx, B.vy) < LIVE_MIN) B.live = false;
+
+      // hits / pickups / kicks
+      if (!B.holder) {
+        if (B.live && dist(B, A) < PR + BR) {
+          s.att = hun;
+          endRound("HIT! " + (s.names[hun] || "Hunter") + " takes over");
+          return;
+        }
+        if (!B.live && s.cool === 0 && dist(B, Hh) < PR + BR) { B.holder = hun; B.vx = B.vy = 0; s.hold = 0; }
+        else if (!B.live && dist(B, A) < PR + BR) {
+          const d = dist(B, A) || 1, ix = inputs[att];
+          B.vx = (B.x - A.x) / d * 7.5 + ix.x * 2; B.vy = (B.y - A.y) / d * 7.5 + ix.y * 2;
+          B.x = A.x + (B.x - A.x) / d * (PR + BR + 1); B.y = A.y + (B.y - A.y) / d * (PR + BR + 1);
+        }
+      }
+      if (B.holder === hun) { B.x = Hh.x; B.y = Hh.y - PR - 4; }
+
+      // stones
+      if (A.carry < 0 && s.k < 7) {
+        const st = s.S[s.k];
+        if (dist(st, A) < PR + st.r) { A.carry = s.k; st.vx = st.vy = 0; }
+      }
+      if (A.carry >= 0) {
+        const st = s.S[A.carry]; st.x = A.x; st.y = A.y;
+        if (dist(A, T) < PLACE_R + PR) {
+          st.placed = true; st.x = T.x; st.y = T.y; A.carry = -1; s.k++;
+          if (s.k === 7) { endRound("HAFT SANG! +1 for " + (s.names[att] || "Thrower"), att); return; }
+        }
+      }
+      return;
+    }
+
+    if (s.ph === "end") { if (--s.endT <= 0) newRound(); }
+  }
+
+  // actions from players (validated on the host)
+  function actSling(player, vx, vy) {
+    const s = sim;
+    if (!s || s.ph !== "aim" || player !== s.att) return;
+    const l = Math.hypot(vx, vy); if (!(l > 0)) return;
+    const p = clamp(l, 4, 17);
+    s.B.vx = vx / l * p; s.B.vy = vy / l * p; s.B.holder = 0; s.B.live = false; s.B.wall = false;
+    s.ph = "thrown";
+  }
+  function actThrow(player, tx, ty) {
+    const s = sim;
+    if (!s || s.ph !== "scramble" || player === s.att || s.B.holder !== player) return;
+    const Hh = s.P[player], dx = tx - Hh.x, dy = ty - Hh.y, l = Math.hypot(dx, dy);
+    if (!(l > 1)) return;
+    const B = s.B;
+    B.holder = 0; B.live = true; s.hold = 0;
+    B.x = Hh.x + dx / l * (PR + BR + 2); B.y = Hh.y + dy / l * (PR + BR + 2);
+    B.vx = dx / l * HUNTER_THROW; B.vy = dy / l * HUNTER_THROW;
+  }
+
+  const r1 = v => Math.round(v * 10) / 10;
+  function snapshot() {
+    const s = sim;
+    return {
+      ph: s.ph, att: s.att, tries: s.tries, k: s.k, sc: s.sc, names: s.names, win: s.win, msg: s.mt > 0 ? s.msg : "",
+      hold: s.hold, round: s.round,
+      P: { 1: [r1(s.P[1].x), r1(s.P[1].y), s.P[1].carry], 2: [r1(s.P[2].x), r1(s.P[2].y), s.P[2].carry] },
+      B: [r1(s.B.x), r1(s.B.y), s.B.holder, s.B.live ? 1 : 0],
+      S: s.S.map(st => [r1(st.x), r1(st.y), st.placed ? 1 : 0])
+    };
+  }
+
+  // ================= networking =================
+  let peer = null, conn = null, role = null, me = 0, code = "";
+  let view = null;           // latest snapshot being drawn
+  const disp = {};           // smoothed positions for drawing (guest)
+  let simTimer = null;
+
+  function makeCode() { let s = ""; const a = new Uint32Array(5); crypto.getRandomValues(a); for (const x of a) s += ALPHABET[x % ALPHABET.length]; return s; }
+  function inviteLink(c) { const u = new URL(location.href); u.search = "?join=" + c; u.hash = ""; return u.toString(); }
+  const connected = () => !!(conn && conn.open);
+
+  function teardown() {
+    try { conn && conn.close(); } catch {}
+    try { peer && peer.destroy(); } catch {}
+    clearInterval(simTimer); simTimer = null;
+    peer = conn = null; role = null; me = 0; code = ""; sim = null; view = null;
+    for (const k in disp) delete disp[k];
+    banner(""); history.replaceState(null, "", location.pathname);
+  }
+
+  function hostGame(attempt = 0) {
+    teardown();
+    role = "host"; me = 1; code = makeCode();
+    $("codeShow").textContent = code; show("waiting");
+    peer = new Peer(PREFIX + code);
+    peer.on("error", err => {
+      if (err.type === "unavailable-id" && attempt < 3) return hostGame(attempt + 1);
+      if (role === "host" && !sim) { show("lobby"); $("lobbyErr").textContent = "Couldn't start a game (" + (err.type || err.message) + "). Try again."; }
+    });
+    peer.on("disconnected", () => { try { peer.reconnect(); } catch {} });
+    peer.on("connection", c => {
+      if (connected()) { c.on("open", () => { c.send({ t: "full" }); setTimeout(() => c.close(), 300); }); return; }
+      conn = c;
+      c.on("data", m => onHostMsg(c, m));
+      c.on("close", () => { if (conn !== c) return; conn = null; inputs[2] = { x: 0, y: 0 }; if (sim) banner("Your opponent disconnected — the game is paused. They can rejoin with code " + code + "."); });
+    });
+  }
+  function onHostMsg(c, m) {
+    if (!m || typeof m !== "object") return;
+    if (m.t === "hello") {
+      const gn = String(m.name || "").slice(0, 14);
+      if (!sim) newMatch({ 1: myName(), 2: gn }, 1); else sim.names[2] = gn;
+      banner(""); show("game"); toast((gn || "Your opponent") + " joined!");
+      startLoop();
+    } else if (m.t === "in") {
+      inputs[2] = { x: clamp(+m.x || 0, -1, 1), y: clamp(+m.y || 0, -1, 1) };
+    } else if (m.t === "sling") actSling(2, +m.vx, +m.vy);
+    else if (m.t === "throw") actThrow(2, +m.x, +m.y);
+    else if (m.t === "rematch") rematch();
+  }
+  function startLoop() {
+    if (simTimer) return;
+    let last = performance.now(), acc = 0, sendTick = 0;
+    simTimer = setInterval(() => {
+      const now = performance.now(); acc += now - last; last = now;
+      if (acc > 2000) acc = 2000;
+      if (!connected()) { acc = 0; return; }        // pause while the opponent is away
+      inputs[1] = localMove();
+      while (acc >= 1000 / 60) { step(); acc -= 1000 / 60; }
+      view = snapshot();
+      if (++sendTick % 2 === 0 || view.ph !== lastSentPh) { conn.send({ t: "s", s: view }); lastSentPh = view.ph; }
+    }, 1000 / 60);
+  }
+  let lastSentPh = "";
+  function rematch() {
+    if (!sim || !sim.win) return;
+    const starter = 3 - sim.first;
+    newMatch(sim.names, starter);
+  }
+
+  function joinGame(c) {
+    c = (c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (c.length !== 5) { show("lobby"); $("lobbyErr").textContent = "Game codes are 5 characters."; return; }
+    teardown();
+    role = "guest"; me = 2; code = c;
+    history.replaceState(null, "", "?join=" + c);
+    show("connecting");
+    $("connectingText").textContent = "Connecting to game " + c + "…"; $("connectErr").textContent = ""; $("backBtn").classList.add("hidden");
+    peer = new Peer();
+    const fail = msg => { if (role !== "guest") return; $("connectErr").textContent = msg; $("backBtn").classList.remove("hidden"); $("connectingText").textContent = "Couldn't connect"; };
+    const timer = setTimeout(() => { if (!view) fail("Taking too long. Check the code, and make sure the other player still has the game open."); }, 15000);
+    peer.on("error", err => {
+      clearTimeout(timer);
+      if (err.type === "peer-unavailable") fail("No game found with code " + c + ".");
+      else fail("Connection error (" + (err.type || err.message) + ").");
+    });
+    peer.on("open", () => {
+      conn = peer.connect(PREFIX + c, { reliable: true });
+      conn.on("open", () => conn.send({ t: "hello", name: myName() }));
+      conn.on("data", m => {
+        if (!m || typeof m !== "object") return;
+        if (m.t === "full") { clearTimeout(timer); fail("That game already has two players."); return; }
+        if (m.t === "s") {
+          clearTimeout(timer);
+          const first = !view; view = m.s;
+          if (first) { banner(""); show("game"); startGuestInput(); }
+        }
+      });
+      conn.on("close", () => {
+        if (role !== "guest" || !view) return;
+        banner("Lost connection to the host. ");
+        const b = document.createElement("button"); b.textContent = "Rejoin"; b.style.cssText = "padding:6px 12px;margin-left:6px";
+        b.onclick = () => joinGame(code); $("banner").appendChild(b);
+      });
+    });
+  }
+  let guestTimer = null;
+  function startGuestInput() {
+    clearInterval(guestTimer);
+    let lastSent = "", tick = 0;
+    guestTimer = setInterval(() => {
+      if (role !== "guest" || !connected()) return;
+      const m = localMove(), key = m.x.toFixed(2) + "," + m.y.toFixed(2);
+      if (key !== lastSent || ++tick % 15 === 0) { conn.send({ t: "in", x: m.x, y: m.y }); lastSent = key; }
+    }, 1000 / 30);
+  }
+  function sendAction(msg) {
+    if (role === "host") { if (msg.t === "sling") actSling(1, msg.vx, msg.vy); else if (msg.t === "throw") actThrow(1, msg.x, msg.y); }
+    else if (connected()) conn.send(msg);
+  }
+
+  // ================= input =================
+  const keys = new Set();
+  const KEYMAP = { ArrowUp: "u", KeyW: "u", ArrowDown: "d", KeyS: "d", ArrowLeft: "l", KeyA: "l", ArrowRight: "r", KeyD: "r" };
+  addEventListener("keydown", e => { if (KEYMAP[e.code] && !$("game").classList.contains("hidden") && document.activeElement.tagName !== "INPUT") { keys.add(KEYMAP[e.code]); e.preventDefault(); } });
+  addEventListener("keyup", e => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
+  addEventListener("blur", () => keys.clear());
+  const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
+  function localMove() {
+    let x = (keys.has("r") ? 1 : 0) - (keys.has("l") ? 1 : 0);
+    let y = (keys.has("d") ? 1 : 0) - (keys.has("u") ? 1 : 0);
+    if (joy.id !== null) { x += joy.x; y += joy.y; }
+    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    return { x, y };
+  }
+
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  let scale = 1;
+  function resize() {
+    const w = $("fieldWrap").clientWidth || 960;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(w * H / W * dpr);
+    cv.style.height = (w * H / W) + "px";
+    scale = cv.width / W;
+  }
+  addEventListener("resize", resize);
+  const toField = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
+  const isJoyZone = p => p.x < 260 && p.y > 330;
+
+  const aim = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
+  cv.addEventListener("pointerdown", e => {
+    if (!view) return;
+    const p = toField(e);
+    const amThrower = view.att === me, amHunter = !amThrower;
+    const aiming = amThrower && view.ph === "aim";
+    if (e.pointerType === "touch" && isJoyZone(p) && joy.id === null && !(aiming && aim.id === null && !isJoyZone(p))) {
+      joy.id = e.pointerId; joy.sx = p.x; joy.sy = p.y; joy.x = joy.y = 0;
+      cv.setPointerCapture(e.pointerId); e.preventDefault(); return;
+    }
+    if (aiming && aim.id === null) {
+      aim.id = e.pointerId; aim.sx = p.x; aim.sy = p.y; aim.x = p.x; aim.y = p.y;
+      cv.setPointerCapture(e.pointerId); e.preventDefault(); return;
+    }
+    if (amHunter && view.ph === "scramble" && view.B[2] === me) {
+      sendAction({ t: "throw", x: p.x, y: p.y }); e.preventDefault();
+    }
+  });
+  cv.addEventListener("pointermove", e => {
+    const p = toField(e);
+    if (e.pointerId === joy.id) {
+      let dx = (p.x - joy.sx) / 55, dy = (p.y - joy.sy) / 55; const l = Math.hypot(dx, dy);
+      if (l > 1) { dx /= l; dy /= l; }
+      joy.x = dx; joy.y = dy;
+    } else if (e.pointerId === aim.id) { aim.x = p.x; aim.y = p.y; }
+  });
+  function pointerEnd(e) {
+    if (e.pointerId === joy.id) { joy.id = null; joy.x = joy.y = 0; }
+    else if (e.pointerId === aim.id) {
+      const dx = aim.sx - aim.x, dy = aim.sy - aim.y, l = Math.hypot(dx, dy);
+      aim.id = null;
+      if (l > 14 && view && view.ph === "aim" && view.att === me) sendAction({ t: "sling", vx: dx / 160 * 17, vy: dy / 160 * 17 });
+    }
+  }
+  cv.addEventListener("pointerup", pointerEnd);
+  cv.addEventListener("pointercancel", pointerEnd);
+
+  // ================= rendering =================
+  const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+  function smooth(key, x, y, k = 0.4) {
+    const d = disp[key];
+    if (!d || Math.hypot(d.x - x, d.y - y) > 140 || role === "host") { disp[key] = { x, y }; return disp[key]; }
+    d.x += (x - d.x) * k; d.y += (y - d.y) * k; return d;
+  }
+  function drawStone(x, y, r, i, glow) {
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.beginPath(); ctx.ellipse(x + 2, y + 4, r, r * 0.9, 0, 0, 7); ctx.fill();
+    const shade = 150 + i * 12;
+    const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    g.addColorStop(0, `rgb(${shade + 50},${shade + 48},${shade + 44})`); g.addColorStop(1, `rgb(${shade - 40},${shade - 42},${shade - 46})`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(40,40,40,.45)"; ctx.lineWidth = 1.5; ctx.stroke();
+    if (glow) {
+      const t = performance.now() / 300;
+      ctx.strokeStyle = `rgba(250,204,21,${0.6 + 0.4 * Math.sin(t)})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(x, y, r + 5 + Math.sin(t) * 1.5, 0, 7); ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(30,30,30,.55)"; ctx.font = `600 ${Math.max(10, r * 0.8)}px Fredoka, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(i + 1), x, y + 1);
+    ctx.restore();
+  }
+  function drawPlayer(x, y, color, label, icon, isMe) {
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(x + 2, y + 5, PR, PR * 0.8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, PR, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = isMe ? 4 : 2.5; ctx.stroke();
+    ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(icon, x, y + 1);
+    ctx.font = "600 14px Fredoka, sans-serif"; ctx.fillStyle = "#fff";
+    ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = 3; ctx.strokeText(label, x, y + PR + 13); ctx.fillText(label, x, y + PR + 13);
+  }
+
+  function draw() {
+    requestAnimationFrame(draw);
+    if (!view || $("game").classList.contains("hidden")) return;
+    const v = view;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+    // ground
+    ctx.fillStyle = "#6f9a4a"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,.05)";
+    for (let i = 0; i < W; i += 80) ctx.fillRect(i, 0, 40, H);
+    // throw line & areas
+    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 4; ctx.setLineDash([14, 10]);
+    ctx.beginPath(); ctx.moveTo(LINE_X, 0); ctx.lineTo(LINE_X, H); ctx.stroke(); ctx.setLineDash([]);
+    if (v.ph === "aim" || v.ph === "thrown") {
+      ctx.fillStyle = "rgba(0,0,0,.07)"; ctx.fillRect(HUNTER_MIN_X - PR, 0, W, H);
+    }
+    // tower spot
+    ctx.fillStyle = "#c9b27c"; ctx.beginPath(); ctx.arc(T.x, T.y, PLACE_R, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(90,70,30,.4)"; ctx.lineWidth = 2; ctx.stroke();
+    if (v.ph === "scramble") {
+      ctx.strokeStyle = "rgba(220,38,38,.6)"; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
+      ctx.beginPath(); ctx.arc(T.x, T.y, NO_GO, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // placed stones as a stack
+    let lvl = 0;
+    v.S.forEach((st, i) => { if (st[2]) { drawStone(T.x, T.y - lvl * 4, STONE_R[i], i, false); lvl++; } });
+    // loose stones
+    const attP = v.P[v.att];
+    v.S.forEach((st, i) => {
+      if (st[2] || attP[2] === i) return;
+      const d = smooth("s" + i, st[0], st[1]);
+      drawStone(d.x, d.y, STONE_R[i], i, v.ph === "scramble" && i === v.k);
+    });
+
+    // players
+    const p1c = css("--p1") || "#2563eb", p2c = css("--p2") || "#dc2626";
+    for (const p of [1, 2]) {
+      const pp = v.P[p], d = smooth("p" + p, pp[0], pp[1], 0.5);
+      const nm = p === me ? "You" : (v.names[p] || (p === 1 ? "Blue" : "Red"));
+      drawPlayer(d.x, d.y, p === 1 ? p1c : p2c, nm, p === v.att ? "🧱" : "🎯", p === me);
+      if (pp[2] >= 0) drawStone(d.x, d.y - PR - 6, STONE_R[pp[2]] * 0.85, pp[2], false);
+    }
+
+    // ball
+    const bd = smooth("b", v.B[0], v.B[1], 0.55);
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(bd.x + 2, bd.y + 4, BR, BR * 0.8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = v.B[3] ? "#fb923c" : "#f97316"; ctx.beginPath(); ctx.arc(bd.x, bd.y, BR, 0, 7); ctx.fill();
+    ctx.strokeStyle = v.B[3] ? "#fff" : "rgba(120,50,0,.6)"; ctx.lineWidth = v.B[3] ? 3 : 1.5; ctx.stroke();
+
+    // hunter hold countdown
+    if (v.ph === "scramble" && v.B[2] && v.B[2] !== v.att) {
+      const hp = disp["p" + v.B[2]], left = Math.ceil((HOLD_LIMIT - v.hold) / 60);
+      ctx.fillStyle = "#fff"; ctx.font = "700 18px Fredoka, sans-serif"; ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.lineWidth = 3;
+      ctx.strokeText(String(Math.max(left, 0)), hp.x + PR + 10, hp.y - PR); ctx.fillText(String(Math.max(left, 0)), hp.x + PR + 10, hp.y - PR);
+    }
+
+    // aim line
+    if (aim.id !== null && v.ph === "aim" && v.att === me) {
+      const dx = aim.sx - aim.x, dy = aim.sy - aim.y, l = Math.hypot(dx, dy);
+      if (l > 4) {
+        const pw = clamp(l / 160 * 17, 4, 17), nx = dx / l, ny = dy / l, len = pw * 30;
+        const bx = v.B[0], by = v.B[1];
+        ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 3; ctx.setLineDash([6, 8]);
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + nx * len, by + ny * len); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = pw > 13 ? "#ef4444" : pw > 8 ? "#facc15" : "#fff";
+        ctx.beginPath(); ctx.arc(bx + nx * len, by + ny * len, 6, 0, 7); ctx.fill();
+      }
+    }
+
+    // joystick
+    if (joy.id !== null) {
+      ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(joy.sx, joy.sy, 55, 0, 7); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.55)"; ctx.beginPath(); ctx.arc(joy.sx + joy.x * 55, joy.sy + joy.y * 55, 22, 0, 7); ctx.fill();
+    } else if (matchMedia("(pointer: coarse)").matches) {
+      ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.arc(120, 480, 55, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.font = "600 13px Fredoka, sans-serif"; ctx.textAlign = "center"; ctx.fillText("move", 120, 484);
+    }
+
+    // big message
+    const msg = v.ph === "over" ? ((v.win === me ? "You win the match! 🏆" : (v.names[v.win] || "Opponent") + " wins the match")) : v.msg;
+    if (msg) {
+      ctx.font = "700 40px Fredoka, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.lineWidth = 7; ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.strokeText(msg, W / 2, 70);
+      ctx.fillStyle = "#fff"; ctx.fillText(msg, W / 2, 70);
+    }
+    if (role === "host" && !connected()) {
+      ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#fff"; ctx.font = "700 30px Fredoka, sans-serif"; ctx.textAlign = "center"; ctx.fillText("Paused — waiting for opponent", W / 2, H / 2);
+    }
+    updateHud(v);
+  }
+
+  let lastHud = "";
+  function updateHud(v) {
+    const amT = v.att === me;
+    let hint = "", sub = "";
+    if (v.ph === "aim") {
+      hint = amT ? "Drag back and release to throw at the tower" : (v.names[v.att] || "Opponent") + " is aiming at the tower…";
+      sub = amT ? `Throw ${v.tries + 1} of ${TRIES} · you can move up and down behind the line` : "Get ready to chase the ball when the tower falls";
+    } else if (v.ph === "thrown") { hint = "…"; }
+    else if (v.ph === "scramble") {
+      if (amT) { hint = v.P[me][2] >= 0 ? "Carry it to the tower spot!" : `Grab stone ${v.k + 1} (glowing) and bring it back`; sub = "Dodge the ball — you can run into it to kick it away"; }
+      else { hint = v.B[2] === me ? "Tap or click where to throw!" : "Get the ball and hit them!"; sub = v.B[2] === me ? "You can't move while holding it · 5 seconds or it's a foul" : "Stay outside the red circle"; }
+    } else if (v.ph === "end") hint = "Next round…";
+    else if (v.ph === "over") hint = v.win === me ? "You win! 🏆" : (v.names[v.win] || "Opponent") + " wins.";
+    if (!connected()) { hint = role === "host" ? "Opponent disconnected" : "Disconnected"; sub = ""; }
+
+    const key = [hint, sub, v.sc[1], v.sc[2], v.att, v.k, v.ph, v.names[1], v.names[2], connected()].join("|");
+    if (key === lastHud) return; lastHud = key;
+    $("hint").textContent = hint; $("subhint").textContent = sub;
+    for (const p of [1, 2]) {
+      $("n" + p).textContent = (v.names[p] || (p === 1 ? "Blue" : "Red")) + (p === me ? " (you)" : "");
+      $("r" + p).textContent = p === v.att ? "🧱 Thrower" : "🎯 Hunter";
+      $("sc" + p).textContent = v.sc[p];
+    }
+    const pips = $("pips"); pips.innerHTML = "";
+    STONE_R.forEach((r, i) => { const d = document.createElement("div"); d.className = "pip" + (v.S[i][2] ? " on" : ""); d.style.width = d.style.height = (r * 0.55) + "px"; pips.appendChild(d); });
+    $("firstTo").textContent = "first to " + WIN_SCORE;
+    $("rematchBtn").classList.toggle("hidden", v.ph !== "over" || !connected());
+  }
+  requestAnimationFrame(draw);
+
+  // ================= buttons =================
+  $("createBtn").onclick = () => { $("lobbyErr").textContent = ""; myName(); hostGame(); };
+  $("joinBtn").onclick = () => { $("lobbyErr").textContent = ""; joinGame($("codeInput").value); };
+  $("codeInput").addEventListener("keydown", e => { if (e.key === "Enter") $("joinBtn").click(); });
+  $("copyLinkBtn").onclick = async () => { try { await navigator.clipboard.writeText(inviteLink(code)); toast("Invite link copied"); } catch { prompt("Copy this link:", inviteLink(code)); } };
+  $("shareBtn").onclick = async () => {
+    const url = inviteLink(code);
+    if (navigator.share) { try { await navigator.share({ title: "Haft Sang", text: "Play Haft Sang with me! Code " + code, url }); } catch {} }
+    else { try { await navigator.clipboard.writeText(url); toast("Invite link copied"); } catch { prompt("Copy this link:", url); } }
+  };
+  $("cancelBtn").onclick = () => { teardown(); show("lobby"); };
+  $("backBtn").onclick = () => { teardown(); show("lobby"); };
+  $("leaveBtn").onclick = () => { if (confirm("Leave this game?")) { clearInterval(guestTimer); teardown(); show("lobby"); $("rules").open = true; } };
+  $("rematchBtn").onclick = () => { if (role === "host") rematch(); else if (connected()) conn.send({ t: "rematch" }); };
+  addEventListener("beforeunload", () => { try { peer && peer.destroy(); } catch {} });
+
+  // test hook for automated checks (no effect on normal play)
+  window.__hs = { get sim() { return sim; }, get view() { return view; }, inputs, sendAction, get me() { return me; } };
+
+  const q = new URLSearchParams(location.search).get("join");
+  if (q) { $("codeInput").value = q.toUpperCase(); joinGame(q); }
+})();
+</script>
+</body>
+</html>
